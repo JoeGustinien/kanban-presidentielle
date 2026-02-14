@@ -619,7 +619,7 @@ export default function KanbanPresidentielle() {
 
       <div className="max-w-7xl mx-auto mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
         <p className="text-sm text-blue-800">
-          <strong>💡 Astuce :</strong> {isAdmin ? 'Glissez-déposez les cartes entre les colonnes. Survolez une carte pour l\'éditer.' : 'Cliquez sur "Mode Admin" pour modifier le Kanban.'} Les données sont synchronisées en temps réel pour tous les visiteurs.
+          <strong>💡 Astuce :</strong> {isAdmin ? 'Glissez-déposez les cartes entre les colonnes. Survolez une carte pour l\'éditer.' : ''} Les données sont synchronisées en temps réel pour tous les visiteurs.
         </p>
       </div>
     </div>
