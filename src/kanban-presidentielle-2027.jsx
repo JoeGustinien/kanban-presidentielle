@@ -1,7 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { GripVertical, Plus, Edit2, Trash2, X, Save, ExternalLink } from 'lucide-react';
 
-// Données initiales basées sur les recherches web récentes
+console.log('🔥 FIREBASE VERSION LOADED');
+
+import React, { useState, useEffect } from 'react';
+import { GripVertical, Plus, Edit2, Trash2, X, Save, ExternalLink, Lock, LogOut } from 'lucide-react';
+import { db } from './firebase';
+import { collection, getDocs, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+
+// Données initiales
 const initialCandidates = [
   {
     id: '1',
@@ -126,8 +131,13 @@ const COLUMNS = [
   { id: 'qualifies', title: 'Qualifiés', color: 'border-green-400' }
 ];
 
-const STORAGE_KEY = 'presidentielle-2027-kanban';
+// Mot de passe admin simple (à changer !)
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD;
 
+if (!ADMIN_PASSWORD) {
+  console.error('❌ VITE_ADMIN_PASSWORD non défini dans .env');
+  throw new Error('Configuration manquante : mot de passe admin non défini');
+}
 export default function KanbanPresidentielle() {
   const [candidates, setCandidates] = useState([]);
   const [draggedCard, setDraggedCard] = useState(null);
@@ -135,30 +145,68 @@ export default function KanbanPresidentielle() {
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [password, setPassword] = useState('');
 
-  // Load from shared storage on mount
+  // Charger les données depuis Firebase en temps réel
   useEffect(() => {
-    loadFromStorage();
+    const unsubscribe = onSnapshot(collection(db, 'candidates'), (snapshot) => {
+      if (snapshot.empty) {
+        // Initialiser avec les données par défaut
+        initializeData();
+      } else {
+        const data = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setCandidates(data);
+      }
+    }, (error) => {
+      console.error('Error loading candidates:', error);
+      setCandidates(initialCandidates);
+    });
+
+    return () => unsubscribe();
   }, []);
 
-  const loadFromStorage = async () => {
+  const initializeData = async () => {
     try {
-      const result = await window.storage.get(STORAGE_KEY, true);
-      if (result && result.value) {
-        setCandidates(JSON.parse(result.value));
-      } else {
-        setCandidates(initialCandidates);
+      for (const candidate of initialCandidates) {
+        await setDoc(doc(db, 'candidates', candidate.id), candidate);
       }
     } catch (error) {
-      console.log('No saved data found, using initial candidates');
-      setCandidates(initialCandidates);
+      console.error('Error initializing data:', error);
     }
   };
 
-  const saveToStorage = async (data) => {
+  const handleLogin = () => {
+    if (password === ADMIN_PASSWORD) {
+      setIsAdmin(true);
+      setShowLoginModal(false);
+      setPassword('');
+      localStorage.setItem('isAdmin', 'true');
+    } else {
+      alert('Mot de passe incorrect !');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAdmin(false);
+    localStorage.removeItem('isAdmin');
+  };
+
+  // Vérifier si l'utilisateur est déjà connecté
+  useEffect(() => {
+    if (localStorage.getItem('isAdmin') === 'true') {
+      setIsAdmin(true);
+    }
+  }, []);
+
+  const saveCandidate = async (candidate) => {
     setIsSaving(true);
     try {
-      await window.storage.set(STORAGE_KEY, JSON.stringify(data), true);
+      await setDoc(doc(db, 'candidates', candidate.id), candidate);
       setLastSaved(new Date());
     } catch (error) {
       console.error('Failed to save:', error);
@@ -168,34 +216,45 @@ export default function KanbanPresidentielle() {
     }
   };
 
+  const deleteCandidate = async (id) => {
+    try {
+      await deleteDoc(doc(db, 'candidates', id));
+    } catch (error) {
+      console.error('Failed to delete:', error);
+      alert('Erreur lors de la suppression');
+    }
+  };
+
   const handleDragStart = (e, candidate) => {
+    if (!isAdmin) return;
     setDraggedCard(candidate);
     e.dataTransfer.effectAllowed = 'move';
   };
 
   const handleDragOver = (e) => {
+    if (!isAdmin) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDrop = (e, newStatus) => {
+  const handleDrop = async (e, newStatus) => {
+    if (!isAdmin) return;
     e.preventDefault();
     if (draggedCard) {
-      const updatedCandidates = candidates.map(c =>
-        c.id === draggedCard.id ? { ...c, status: newStatus } : c
-      );
-      setCandidates(updatedCandidates);
-      saveToStorage(updatedCandidates);
+      const updatedCandidate = { ...draggedCard, status: newStatus };
+      await saveCandidate(updatedCandidate);
       setDraggedCard(null);
     }
   };
 
   const handleEdit = (candidate) => {
+    if (!isAdmin) return;
     setEditingCard({ ...candidate });
     setIsAddingNew(false);
   };
 
   const handleAdd = () => {
+    if (!isAdmin) return;
     setEditingCard({
       id: Date.now().toString(),
       name: '',
@@ -210,32 +269,20 @@ export default function KanbanPresidentielle() {
     setIsAddingNew(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editingCard.name || !editingCard.party) {
       alert('Le nom et le parti sont obligatoires');
       return;
     }
 
-    let updatedCandidates;
-    if (isAddingNew) {
-      updatedCandidates = [...candidates, editingCard];
-    } else {
-      updatedCandidates = candidates.map(c =>
-        c.id === editingCard.id ? editingCard : c
-      );
-    }
-
-    setCandidates(updatedCandidates);
-    saveToStorage(updatedCandidates);
+    await saveCandidate(editingCard);
     setEditingCard(null);
     setIsAddingNew(false);
   };
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (confirm('Êtes-vous sûr de vouloir supprimer ce candidat ?')) {
-      const updatedCandidates = candidates.filter(c => c.id !== id);
-      setCandidates(updatedCandidates);
-      saveToStorage(updatedCandidates);
+      await deleteCandidate(id);
       setEditingCard(null);
     }
   };
@@ -246,7 +293,6 @@ export default function KanbanPresidentielle() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6">
-      {/* Header */}
       <div className="max-w-7xl mx-auto mb-6">
         <div className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -257,24 +303,44 @@ export default function KanbanPresidentielle() {
               <p className="text-gray-600 mt-1">
                 Kanban des candidats potentiels et déclarés
               </p>
-              {lastSaved && (
+              {lastSaved && isAdmin && (
                 <p className="text-sm text-green-600 mt-2">
                   ✓ Dernière sauvegarde : {lastSaved.toLocaleTimeString()}
                 </p>
               )}
             </div>
-            <button
-              onClick={handleAdd}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-            >
-              <Plus size={20} />
-              Ajouter un candidat
-            </button>
+            <div className="flex gap-2">
+              {isAdmin ? (
+                <>
+                  <button
+                    onClick={handleAdd}
+                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                  >
+                    <Plus size={20} />
+                    Ajouter un candidat
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                  >
+                    <LogOut size={20} />
+                    Déconnexion
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setShowLoginModal(true)}
+                  className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+                >
+                  <Lock size={20} />
+                  Mode Admin
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Kanban Board */}
       <div className="max-w-7xl mx-auto overflow-x-auto">
         <div className="flex gap-4 min-w-min lg:grid lg:grid-cols-4">
           {COLUMNS.map(column => (
@@ -295,24 +361,25 @@ export default function KanbanPresidentielle() {
                 {getCandidatesByStatus(column.id).map(candidate => (
                   <div
                     key={candidate.id}
-                    draggable
+                    draggable={isAdmin}
                     onDragStart={(e) => handleDragStart(e, candidate)}
-                    className="bg-white rounded-lg p-4 shadow hover:shadow-lg transition-all cursor-move border-2 border-transparent hover:border-blue-400 group relative"
+                    className={`bg-white rounded-lg p-4 shadow hover:shadow-lg transition-all border-2 border-transparent ${isAdmin ? 'cursor-move hover:border-blue-400' : ''} group relative`}
                   >
-                    {/* Edit button */}
-                    <button
-                      onClick={() => handleEdit(candidate)}
-                      className="absolute top-2 right-2 p-1.5 bg-gray-100 rounded hover:bg-blue-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                    >
-                      <Edit2 size={14} className="text-gray-600" />
-                    </button>
+                    {isAdmin && (
+                      <button
+                        onClick={() => handleEdit(candidate)}
+                        className="absolute top-2 right-2 p-1.5 bg-gray-100 rounded hover:bg-blue-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Edit2 size={14} className="text-gray-600" />
+                      </button>
+                    )}
 
-                    {/* Drag handle */}
-                    <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <GripVertical size={16} className="text-gray-400" />
-                    </div>
+                    {isAdmin && (
+                      <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <GripVertical size={16} className="text-gray-400" />
+                      </div>
+                    )}
 
-                    {/* Photo */}
                     {candidate.photo ? (
                       <img
                         src={candidate.photo}
@@ -328,17 +395,14 @@ export default function KanbanPresidentielle() {
                       </div>
                     )}
 
-                    {/* Name */}
                     <div className="font-bold text-center mb-2 text-gray-900">
                       {candidate.name}
                     </div>
 
-                    {/* Party */}
                     <div className="bg-gray-100 text-center py-1 px-2 rounded text-sm mb-2 text-gray-700">
                       {candidate.party}
                     </div>
 
-                    {/* Info */}
                     {candidate.polls && (
                       <div className="text-sm text-gray-600 mb-1">
                         <strong>Sondages :</strong> {candidate.polls}
@@ -377,8 +441,50 @@ export default function KanbanPresidentielle() {
         </div>
       </div>
 
+      {/* Login Modal */}
+      {showLoginModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-bold">Connexion Admin</h2>
+              <button
+                onClick={() => {
+                  setShowLoginModal(false);
+                  setPassword('');
+                }}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Mot de passe</label>
+                <input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
+                  className="w-full border rounded px-3 py-2"
+                  placeholder="Entrez le mot de passe admin"
+                  autoFocus
+                />
+              </div>
+
+              <button
+                onClick={handleLogin}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium"
+              >
+                Se connecter
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit Modal */}
-      {editingCard && (
+      {editingCard && isAdmin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-4">
@@ -511,11 +617,9 @@ export default function KanbanPresidentielle() {
         </div>
       )}
 
-      {/* Info footer */}
       <div className="max-w-7xl mx-auto mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
         <p className="text-sm text-blue-800">
-          <strong>💡 Astuce :</strong> Glissez-déposez les cartes entre les colonnes. 
-          Survolez une carte pour l'éditer. Les données sont partagées en temps réel avec tous les utilisateurs.
+          <strong>💡 Astuce :</strong> {isAdmin ? 'Glissez-déposez les cartes entre les colonnes. Survolez une carte pour l\'éditer.' : 'Cliquez sur "Mode Admin" pour modifier le Kanban.'} Les données sont synchronisées en temps réel pour tous les visiteurs.
         </p>
       </div>
     </div>
