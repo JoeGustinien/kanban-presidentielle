@@ -134,6 +134,37 @@ const COLUMNS = [
 // Mot de passe admin simple (à changer !)
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD;
 
+// Fonction pour déterminer la couleur selon le parti
+const getPartyColor = (party) => {
+  const partyLower = party.toLowerCase();
+  
+  if (partyLower.includes('rassemblement national') || partyLower.includes('reconquête')) {
+    return 'from-blue-900 to-blue-700'; // Bleu foncé RN/Reconquête
+  }
+  if (partyLower.includes('républicain')) {
+    return 'from-blue-600 to-blue-500'; // Bleu LR
+  }
+  if (partyLower.includes('horizons') || partyLower.includes('renaissance')) {
+    return 'from-yellow-500 to-orange-400'; // Jaune/Orange Centre
+  }
+  if (partyLower.includes('écologie') || partyLower.includes('eelv') || partyLower.includes('vert')) {
+    return 'from-green-600 to-green-500'; // Vert Écolo
+  }
+  if (partyLower.includes('socialiste') || partyLower.includes('place publique') || partyLower.includes(' ps')) {
+    return 'from-pink-600 to-pink-500'; // Rose PS
+  }
+  if (partyLower.includes('insoumise') || partyLower.includes('lfi')) {
+    return 'from-red-600 to-red-500'; // Rouge LFI
+  }
+  if (partyLower.includes('communiste') || partyLower.includes('pcf')) {
+    return 'from-red-700 to-red-600'; // Rouge foncé PCF
+  }
+  if (partyLower.includes('debout')) {
+    return 'from-orange-600 to-red-400'; // Orange-rouge Ruffin/Divers gauche
+  }
+  
+  return 'from-gray-600 to-gray-500'; // Par défaut
+};
 if (!ADMIN_PASSWORD) {
   console.error('❌ VITE_ADMIN_PASSWORD non défini dans .env');
   throw new Error('Configuration manquante : mot de passe admin non défini');
@@ -380,21 +411,15 @@ export default function KanbanPresidentielle() {
                       </div>
                     )}
 
-                    {candidate.photo ? (
-                      <img
-                        src={candidate.photo}
-                        alt={candidate.name}
-                        className="w-20 h-20 rounded-full mx-auto mb-3 object-cover border-2 border-gray-200"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                        }}
-                      />
-                    ) : (
-                      <div className="w-20 h-20 rounded-full mx-auto mb-3 bg-gray-300 flex items-center justify-center text-gray-600 text-xs">
-                        PHOTO
-                      </div>
-                    )}
-
+                   {candidate.photo ? (
+  <div className={`w-20 h-20 rounded-full mx-auto mb-3 bg-gradient-to-br ${getPartyColor(candidate.party)} flex items-center justify-center text-white font-bold text-xl border-2 border-gray-200 shadow-md`}>
+    {candidate.name.split(' ').map(n => n[0]).join('')}
+  </div>
+) : (
+  <div className="w-20 h-20 rounded-full mx-auto mb-3 bg-gray-300 flex items-center justify-center text-gray-600 text-xs">
+    PHOTO
+  </div>
+)}
                     <div className="font-bold text-center mb-2 text-gray-900">
                       {candidate.name}
                     </div>
