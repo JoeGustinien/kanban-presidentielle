@@ -1,12 +1,8 @@
-
-console.log('🔥 FIREBASE VERSION LOADED');
-
 import React, { useState, useEffect } from 'react';
 import { GripVertical, Plus, Edit2, Trash2, X, Save, ExternalLink, Lock, LogOut } from 'lucide-react';
 import { db } from './firebase';
-import { collection, getDocs, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 
-// Données initiales
 const initialCandidates = [
   {
     id: '1',
@@ -27,7 +23,7 @@ const initialCandidates = [
     declaredDate: null,
     programUrl: 'https://www.rassemblementnational.fr',
     status: 'potentiels',
-    note: 'Condamnée à 5 ans d\'inéligibilité (appel en cours)'
+    note: "Condamnée à 5 ans d'inéligibilité (appel en cours)"
   },
   {
     id: '3',
@@ -131,46 +127,49 @@ const COLUMNS = [
   { id: 'qualifies', title: 'Qualifiés', color: 'border-green-400' }
 ];
 
-// Mot de passe admin simple (à changer !)
-const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD;
+// Mot de passe avec fallback si la variable n'est pas définie
+const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin2027';
 
-// Fonction pour déterminer la couleur selon le parti
 const getPartyColor = (party) => {
-  const partyLower = party.toLowerCase();
-  
-  if (partyLower.includes('rassemblement national') || partyLower.includes('reconquête')) {
-    return 'from-blue-900 to-blue-700'; // Bleu foncé RN/Reconquête
-  }
-  if (partyLower.includes('républicain')) {
-    return 'from-blue-600 to-blue-500'; // Bleu LR
-  }
-  if (partyLower.includes('horizons') || partyLower.includes('renaissance')) {
-    return 'from-yellow-500 to-orange-400'; // Jaune/Orange Centre
-  }
-  if (partyLower.includes('écologie') || partyLower.includes('eelv') || partyLower.includes('vert')) {
-    return 'from-green-600 to-green-500'; // Vert Écolo
-  }
-  if (partyLower.includes('socialiste') || partyLower.includes('place publique') || partyLower.includes(' ps')) {
-    return 'from-pink-600 to-pink-500'; // Rose PS
-  }
-  if (partyLower.includes('insoumise') || partyLower.includes('lfi')) {
-    return 'from-red-600 to-red-500'; // Rouge LFI
-  }
-  if (partyLower.includes('communiste') || partyLower.includes('pcf')) {
-    return 'from-red-700 to-red-600'; // Rouge foncé PCF
-  }
-  if (partyLower.includes('debout')) {
-    return 'from-orange-600 to-red-400'; // Orange-rouge Ruffin/Divers gauche
-  }
-  
-  return 'from-gray-600 to-gray-500'; // Par défaut
+  const p = party.toLowerCase();
+  if (p.includes('rassemblement national') || p.includes('reconquête')) return 'from-blue-900 to-blue-700';
+  if (p.includes('républicain')) return 'from-blue-600 to-blue-500';
+  if (p.includes('horizons') || p.includes('renaissance')) return 'from-yellow-500 to-orange-400';
+  if (p.includes('écologie') || p.includes('eelv') || p.includes('vert')) return 'from-green-600 to-green-500';
+  if (p.includes('socialiste') || p.includes('place publique') || p.includes(' ps')) return 'from-pink-600 to-pink-500';
+  if (p.includes('insoumise') || p.includes('lfi')) return 'from-red-600 to-red-500';
+  if (p.includes('communiste') || p.includes('pcf')) return 'from-red-700 to-red-600';
+  if (p.includes('debout')) return 'from-orange-600 to-red-400';
+  return 'from-gray-600 to-gray-500';
 };
-if (!ADMIN_PASSWORD) {
-  console.error('❌ VITE_ADMIN_PASSWORD non défini dans .env');
-  throw new Error('Configuration manquante : mot de passe admin non défini');
+
+const getInitials = (name) =>
+  name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+
+function CandidatePhoto({ candidate }) {
+  const [imgError, setImgError] = useState(false);
+
+  if (!candidate.photo || imgError) {
+    return (
+      <div className={`w-20 h-20 rounded-full mx-auto mb-3 bg-gradient-to-br ${getPartyColor(candidate.party)} flex items-center justify-center text-white font-bold text-xl border-2 border-gray-200 shadow-md`}>
+        {getInitials(candidate.name)}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={candidate.photo}
+      alt={candidate.name}
+      onError={() => setImgError(true)}
+      className="w-20 h-20 rounded-full mx-auto mb-3 object-cover border-2 border-gray-200 shadow-md"
+    />
+  );
 }
+
 export default function KanbanPresidentielle() {
   const [candidates, setCandidates] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [draggedCard, setDraggedCard] = useState(null);
   const [editingCard, setEditingCard] = useState(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
@@ -179,26 +178,27 @@ export default function KanbanPresidentielle() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [password, setPassword] = useState('');
+  const [dragOverColumn, setDragOverColumn] = useState(null);
 
-  // Charger les données depuis Firebase en temps réel
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'candidates'), (snapshot) => {
       if (snapshot.empty) {
-        // Initialiser avec les données par défaut
         initializeData();
       } else {
-        const data = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        }));
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setCandidates(data);
       }
+      setLoading(false);
     }, (error) => {
       console.error('Error loading candidates:', error);
       setCandidates(initialCandidates);
+      setLoading(false);
     });
-
     return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (localStorage.getItem('isAdmin') === 'true') setIsAdmin(true);
   }, []);
 
   const initializeData = async () => {
@@ -208,6 +208,7 @@ export default function KanbanPresidentielle() {
       }
     } catch (error) {
       console.error('Error initializing data:', error);
+      setCandidates(initialCandidates);
     }
   };
 
@@ -226,13 +227,6 @@ export default function KanbanPresidentielle() {
     setIsAdmin(false);
     localStorage.removeItem('isAdmin');
   };
-
-  // Vérifier si l'utilisateur est déjà connecté
-  useEffect(() => {
-    if (localStorage.getItem('isAdmin') === 'true') {
-      setIsAdmin(true);
-    }
-  }, []);
 
   const saveCandidate = async (candidate) => {
     setIsSaving(true);
@@ -262,20 +256,23 @@ export default function KanbanPresidentielle() {
     e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDragOver = (e) => {
+  const handleDragOver = (e, columnId) => {
     if (!isAdmin) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
+    setDragOverColumn(columnId);
   };
+
+  const handleDragLeave = () => setDragOverColumn(null);
 
   const handleDrop = async (e, newStatus) => {
     if (!isAdmin) return;
     e.preventDefault();
-    if (draggedCard) {
-      const updatedCandidate = { ...draggedCard, status: newStatus };
-      await saveCandidate(updatedCandidate);
-      setDraggedCard(null);
+    setDragOverColumn(null);
+    if (draggedCard && draggedCard.status !== newStatus) {
+      await saveCandidate({ ...draggedCard, status: newStatus });
     }
+    setDraggedCard(null);
   };
 
   const handleEdit = (candidate) => {
@@ -288,14 +285,8 @@ export default function KanbanPresidentielle() {
     if (!isAdmin) return;
     setEditingCard({
       id: Date.now().toString(),
-      name: '',
-      party: '',
-      photo: '',
-      polls: '',
-      declaredDate: '',
-      programUrl: '',
-      status: 'potentiels',
-      note: ''
+      name: '', party: '', photo: '', polls: '',
+      declaredDate: '', programUrl: '', status: 'potentiels', note: ''
     });
     setIsAddingNew(true);
   };
@@ -305,7 +296,6 @@ export default function KanbanPresidentielle() {
       alert('Le nom et le parti sont obligatoires');
       return;
     }
-
     await saveCandidate(editingCard);
     setEditingCard(null);
     setIsAddingNew(false);
@@ -318,53 +308,50 @@ export default function KanbanPresidentielle() {
     }
   };
 
-  const getCandidatesByStatus = (status) => {
-    return candidates.filter(c => c.status === status);
-  };
+  const getCandidatesByStatus = (status) =>
+    candidates.filter(c => c.status === status);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-4">🗳️</div>
+          <p className="text-gray-600 text-lg">Chargement des candidats...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-4 sm:p-6">
+      {/* Header */}
       <div className="max-w-7xl mx-auto mb-6">
         <div className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+              <h1 className="text-3xl font-bold text-gray-900">
                 🗳️ Présidentielles France 2027
               </h1>
-              <p className="text-gray-600 mt-1">
-                Kanban des candidats potentiels et déclarés
-              </p>
+              <p className="text-gray-600 mt-1">Kanban des candidats potentiels et déclarés</p>
               {lastSaved && isAdmin && (
-                <p className="text-sm text-green-600 mt-2">
-                  ✓ Dernière sauvegarde : {lastSaved.toLocaleTimeString()}
+                <p className="text-sm text-green-600 mt-1">
+                  ✓ Sauvegardé à {lastSaved.toLocaleTimeString()}
                 </p>
               )}
             </div>
             <div className="flex gap-2">
               {isAdmin ? (
                 <>
-                  <button
-                    onClick={handleAdd}
-                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                  >
-                    <Plus size={20} />
-                    Ajouter un candidat
+                  <button onClick={handleAdd} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                    <Plus size={20} /> Ajouter
                   </button>
-                  <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                  >
-                    <LogOut size={20} />
-                    Déconnexion
+                  <button onClick={handleLogout} className="flex items-center gap-2 bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg font-medium transition-colors">
+                    <LogOut size={20} /> Déconnexion
                   </button>
                 </>
               ) : (
-                <button
-                  onClick={() => setShowLoginModal(true)}
-                  className="flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-                >
-                  <Lock size={20} />
-                  Mode Admin
+                <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors">
+                  <Lock size={20} /> Mode Admin
                 </button>
               )}
             </div>
@@ -372,18 +359,24 @@ export default function KanbanPresidentielle() {
         </div>
       </div>
 
+      {/* Kanban Board */}
       <div className="max-w-7xl mx-auto overflow-x-auto">
         <div className="flex gap-4 min-w-min lg:grid lg:grid-cols-4">
           {COLUMNS.map(column => (
             <div
               key={column.id}
-              onDragOver={handleDragOver}
+              onDragOver={(e) => handleDragOver(e, column.id)}
+              onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, column.id)}
-              className="bg-gray-100 rounded-lg p-4 min-h-[500px] min-w-[280px] lg:min-w-0"
+              className={`rounded-lg p-4 min-h-[500px] min-w-[280px] lg:min-w-0 transition-colors ${
+                dragOverColumn === column.id && isAdmin
+                  ? 'bg-blue-100 ring-2 ring-blue-400'
+                  : 'bg-gray-100'
+              }`}
             >
               <div className={`font-bold text-lg mb-4 pb-2 border-b-4 ${column.color}`}>
                 {column.title}
-                <span className="ml-2 text-sm font-normal text-gray-600">
+                <span className="ml-2 text-sm font-normal text-gray-500">
                   ({getCandidatesByStatus(column.id).length})
                 </span>
               </div>
@@ -394,32 +387,26 @@ export default function KanbanPresidentielle() {
                     key={candidate.id}
                     draggable={isAdmin}
                     onDragStart={(e) => handleDragStart(e, candidate)}
-                    className={`bg-white rounded-lg p-4 shadow hover:shadow-lg transition-all border-2 border-transparent ${isAdmin ? 'cursor-move hover:border-blue-400' : ''} group relative`}
+                    className={`bg-white rounded-lg p-4 shadow hover:shadow-lg transition-all border-2 border-transparent ${
+                      isAdmin ? 'cursor-move hover:border-blue-300' : ''
+                    } group relative`}
                   >
                     {isAdmin && (
-                      <button
-                        onClick={() => handleEdit(candidate)}
-                        className="absolute top-2 right-2 p-1.5 bg-gray-100 rounded hover:bg-blue-100 opacity-0 group-hover:opacity-100 transition-opacity"
-                      >
-                        <Edit2 size={14} className="text-gray-600" />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleEdit(candidate)}
+                          className="absolute top-2 right-2 p-1.5 bg-gray-100 rounded hover:bg-blue-100 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                        >
+                          <Edit2 size={14} className="text-gray-600" />
+                        </button>
+                        <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <GripVertical size={16} className="text-gray-400" />
+                        </div>
+                      </>
                     )}
 
-                    {isAdmin && (
-                      <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <GripVertical size={16} className="text-gray-400" />
-                      </div>
-                    )}
+                    <CandidatePhoto candidate={candidate} />
 
-                   {candidate.photo ? (
-  <div className={`w-20 h-20 rounded-full mx-auto mb-3 bg-gradient-to-br ${getPartyColor(candidate.party)} flex items-center justify-center text-white font-bold text-xl border-2 border-gray-200 shadow-md`}>
-    {candidate.name.split(' ').map(n => n[0]).join('')}
-  </div>
-) : (
-  <div className="w-20 h-20 rounded-full mx-auto mb-3 bg-gray-300 flex items-center justify-center text-gray-600 text-xs">
-    PHOTO
-  </div>
-)}
                     <div className="font-bold text-center mb-2 text-gray-900">
                       {candidate.name}
                     </div>
@@ -460,29 +447,38 @@ export default function KanbanPresidentielle() {
                     )}
                   </div>
                 ))}
+
+                {getCandidatesByStatus(column.id).length === 0 && (
+                  <div className="text-center text-gray-400 text-sm py-8 border-2 border-dashed border-gray-300 rounded-lg">
+                    {isAdmin ? 'Glissez une carte ici' : 'Aucun candidat'}
+                  </div>
+                )}
               </div>
             </div>
           ))}
         </div>
       </div>
 
+      {/* Info bar */}
+      <div className="max-w-7xl mx-auto mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+        <p className="text-sm text-blue-800">
+          <strong>💡</strong>{' '}
+          {isAdmin
+            ? 'Mode admin actif — glissez les cartes entre colonnes, survolez pour éditer.'
+            : 'Données synchronisées en temps réel. Connectez-vous en mode admin pour modifier.'}
+        </p>
+      </div>
+
       {/* Login Modal */}
       {showLoginModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-sm w-full">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-2xl">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold">Connexion Admin</h2>
-              <button
-                onClick={() => {
-                  setShowLoginModal(false);
-                  setPassword('');
-                }}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
+              <button onClick={() => { setShowLoginModal(false); setPassword(''); }} className="p-1 hover:bg-gray-100 rounded">
                 <X size={20} />
               </button>
             </div>
-
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Mot de passe</label>
@@ -490,17 +486,13 @@ export default function KanbanPresidentielle() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && handleLogin()}
-                  className="w-full border rounded px-3 py-2"
-                  placeholder="Entrez le mot de passe admin"
+                  onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                  className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  placeholder="Mot de passe admin"
                   autoFocus
                 />
               </div>
-
-              <button
-                onClick={handleLogin}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium"
-              >
+              <button onClick={handleLogin} className="w-full bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium transition-colors">
                 Se connecter
               </button>
             </div>
@@ -511,95 +503,43 @@ export default function KanbanPresidentielle() {
       {/* Edit Modal */}
       {editingCard && isAdmin && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl">
             <div className="flex justify-between items-center mb-4">
               <h2 className="text-xl font-bold">
-                {isAddingNew ? 'Nouveau candidat' : 'Modifier le candidat'}
+                {isAddingNew ? 'Nouveau candidat' : 'Modifier'}
               </h2>
-              <button
-                onClick={() => {
-                  setEditingCard(null);
-                  setIsAddingNew(false);
-                }}
-                className="p-1 hover:bg-gray-100 rounded"
-              >
+              <button onClick={() => { setEditingCard(null); setIsAddingNew(false); }} className="p-1 hover:bg-gray-100 rounded">
                 <X size={20} />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Nom *</label>
-                <input
-                  type="text"
-                  value={editingCard.name}
-                  onChange={(e) => setEditingCard({ ...editingCard, name: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
-                  placeholder="Ex: Marine Le Pen"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Parti *</label>
-                <input
-                  type="text"
-                  value={editingCard.party}
-                  onChange={(e) => setEditingCard({ ...editingCard, party: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
-                  placeholder="Ex: Rassemblement National"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">URL Photo</label>
-                <input
-                  type="text"
-                  value={editingCard.photo}
-                  onChange={(e) => setEditingCard({ ...editingCard, photo: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
-                  placeholder="https://..."
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Sondages</label>
-                <input
-                  type="text"
-                  value={editingCard.polls}
-                  onChange={(e) => setEditingCard({ ...editingCard, polls: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
-                  placeholder="Ex: 25%"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Date de déclaration</label>
-                <input
-                  type="text"
-                  value={editingCard.declaredDate || ''}
-                  onChange={(e) => setEditingCard({ ...editingCard, declaredDate: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
-                  placeholder="Ex: 15/01/2026"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium mb-1">Lien programme/site</label>
-                <input
-                  type="text"
-                  value={editingCard.programUrl || ''}
-                  onChange={(e) => setEditingCard({ ...editingCard, programUrl: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
-                  placeholder="https://..."
-                />
-              </div>
+            <div className="space-y-3">
+              {[
+                { label: 'Nom *', key: 'name', placeholder: 'Ex: Marine Le Pen' },
+                { label: 'Parti *', key: 'party', placeholder: 'Ex: Rassemblement National' },
+                { label: 'URL Photo', key: 'photo', placeholder: 'https://...' },
+                { label: 'Sondages', key: 'polls', placeholder: 'Ex: 25%' },
+                { label: 'Date de déclaration', key: 'declaredDate', placeholder: 'Ex: 15/01/2026' },
+                { label: 'Lien programme/site', key: 'programUrl', placeholder: 'https://...' },
+              ].map(({ label, key, placeholder }) => (
+                <div key={key}>
+                  <label className="block text-sm font-medium mb-1">{label}</label>
+                  <input
+                    type="text"
+                    value={editingCard[key] || ''}
+                    onChange={(e) => setEditingCard({ ...editingCard, [key]: e.target.value })}
+                    className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    placeholder={placeholder}
+                  />
+                </div>
+              ))}
 
               <div>
                 <label className="block text-sm font-medium mb-1">Statut</label>
                 <select
                   value={editingCard.status}
                   onChange={(e) => setEditingCard({ ...editingCard, status: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
+                  className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
                 >
                   {COLUMNS.map(col => (
                     <option key={col.id} value={col.id}>{col.title}</option>
@@ -612,7 +552,7 @@ export default function KanbanPresidentielle() {
                 <textarea
                   value={editingCard.note || ''}
                   onChange={(e) => setEditingCard({ ...editingCard, note: e.target.value })}
-                  className="w-full border rounded px-3 py-2"
+                  className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
                   rows={2}
                   placeholder="Ex: Primaire prévue le..."
                 />
@@ -623,7 +563,7 @@ export default function KanbanPresidentielle() {
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium flex items-center justify-center gap-2 disabled:opacity-50"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-medium flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
               >
                 <Save size={18} />
                 {isSaving ? 'Sauvegarde...' : 'Sauvegarder'}
@@ -631,7 +571,7 @@ export default function KanbanPresidentielle() {
               {!isAddingNew && (
                 <button
                   onClick={() => handleDelete(editingCard.id)}
-                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-medium flex items-center gap-2"
+                  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-medium flex items-center gap-2 transition-colors"
                 >
                   <Trash2 size={18} />
                   Supprimer
@@ -641,12 +581,6 @@ export default function KanbanPresidentielle() {
           </div>
         </div>
       )}
-
-      <div className="max-w-7xl mx-auto mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-sm text-blue-800">
-          <strong>💡 Astuce :</strong> {isAdmin ? 'Glissez-déposez les cartes entre les colonnes. Survolez une carte pour l\'éditer.' : ''} Les données sont synchronisées en temps réel pour tous les visiteurs.
-        </p>
-      </div>
     </div>
   );
 }
