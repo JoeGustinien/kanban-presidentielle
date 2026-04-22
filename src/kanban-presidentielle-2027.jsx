@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { GripVertical, Plus, Edit2, Trash2, X, Save, ExternalLink, Lock, LogOut } from 'lucide-react';
-import { db } from './firebase';
+import React, { useState, useEffect, useRef } from 'react';
+import { GripVertical, Plus, Edit2, Trash2, X, Save, ExternalLink, Lock, LogOut, Search, Upload } from 'lucide-react';
+import { db, storage } from './firebase';
 import { collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const initialCandidates = [
   {
@@ -127,7 +128,6 @@ const COLUMNS = [
   { id: 'qualifies', title: 'Qualifiés', color: 'border-green-400' }
 ];
 
-// Mot de passe avec fallback si la variable n'est pas définie
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin2027';
 
 const getPartyColor = (party) => {
@@ -167,6 +167,108 @@ function CandidatePhoto({ candidate }) {
   );
 }
 
+function PhotoField({ editingCard, setEditingCard }) {
+  const [searching, setSearching] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [previewError, setPreviewError] = useState(false);
+  const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    setPreviewError(false);
+  }, [editingCard.photo]);
+
+  const handleWikipediaSearch = async () => {
+    if (!editingCard.name) return;
+    setSearching(true);
+    try {
+      const name = encodeURIComponent(editingCard.name);
+      const res = await fetch(`https://fr.wikipedia.org/api/rest_v1/page/summary/${name}`);
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      const url = data.thumbnail?.source || data.originalimage?.source;
+      if (url) {
+        setEditingCard(prev => ({ ...prev, photo: url }));
+      } else {
+        alert('Aucune photo trouvée sur Wikipedia pour ce nom.');
+      }
+    } catch {
+      alert('Candidat introuvable sur Wikipedia. Essayez un nom différent ou collez une URL manuellement.');
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const storageRef = ref(storage, `candidates/${editingCard.id}_${Date.now()}`);
+      await uploadBytes(storageRef, file);
+      const url = await getDownloadURL(storageRef);
+      setEditingCard(prev => ({ ...prev, photo: url }));
+    } catch (err) {
+      console.error(err);
+      alert("Erreur lors de l'upload. Vérifiez les règles Firebase Storage.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div>
+      <label className="block text-sm font-medium mb-1">Photo</label>
+      <div className="space-y-2">
+        <input
+          type="text"
+          value={editingCard.photo || ''}
+          onChange={(e) => setEditingCard(prev => ({ ...prev, photo: e.target.value }))}
+          className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+          placeholder="https://..."
+        />
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={handleWikipediaSearch}
+            disabled={searching || !editingCard.name}
+            title={!editingCard.name ? 'Remplissez le nom en premier' : 'Rechercher sur Wikipedia'}
+            className="flex-1 flex items-center justify-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-sm transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Search size={13} />
+            {searching ? 'Recherche…' : 'Wikipedia'}
+          </button>
+          <label className={`flex-1 flex items-center justify-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded text-sm cursor-pointer transition-colors ${uploading ? 'opacity-40 pointer-events-none' : ''}`}>
+            <Upload size={13} />
+            {uploading ? 'Upload…' : 'Uploader'}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleUpload}
+              disabled={uploading}
+            />
+          </label>
+        </div>
+        {editingCard.photo && !previewError && (
+          <div className="flex justify-center pt-1">
+            <img
+              src={editingCard.photo}
+              alt="Aperçu"
+              onError={() => setPreviewError(true)}
+              className="w-16 h-16 rounded-full object-cover border-2 border-gray-200 shadow"
+            />
+          </div>
+        )}
+        {editingCard.photo && previewError && (
+          <p className="text-xs text-red-500 text-center">Image introuvable à cette URL</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function KanbanPresidentielle() {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -179,6 +281,9 @@ export default function KanbanPresidentielle() {
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [password, setPassword] = useState('');
   const [dragOverColumn, setDragOverColumn] = useState(null);
+
+  const titleClickCount = useRef(0);
+  const titleClickTimer = useRef(null);
 
   useEffect(() => {
     const unsubscribe = onSnapshot(collection(db, 'candidates'), (snapshot) => {
@@ -209,6 +314,20 @@ export default function KanbanPresidentielle() {
     } catch (error) {
       console.error('Error initializing data:', error);
       setCandidates(initialCandidates);
+    }
+  };
+
+  const handleTitleClick = () => {
+    if (isAdmin) return;
+    titleClickCount.current += 1;
+    clearTimeout(titleClickTimer.current);
+    if (titleClickCount.current >= 3) {
+      titleClickCount.current = 0;
+      setShowLoginModal(true);
+    } else {
+      titleClickTimer.current = setTimeout(() => {
+        titleClickCount.current = 0;
+      }, 600);
     }
   };
 
@@ -329,7 +448,10 @@ export default function KanbanPresidentielle() {
         <div className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
+              <h1
+                className="text-3xl font-bold text-gray-900 select-none cursor-default"
+                onClick={handleTitleClick}
+              >
                 🗳️ Présidentielles France 2027
               </h1>
               <p className="text-gray-600 mt-1">Kanban des candidats potentiels et déclarés</p>
@@ -339,22 +461,16 @@ export default function KanbanPresidentielle() {
                 </p>
               )}
             </div>
-            <div className="flex gap-2">
-              {isAdmin ? (
-                <>
-                  <button onClick={handleAdd} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                    <Plus size={20} /> Ajouter
-                  </button>
-                  <button onClick={handleLogout} className="flex items-center gap-2 bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg font-medium transition-colors">
-                    <LogOut size={20} /> Déconnexion
-                  </button>
-                </>
-              ) : (
-                <button onClick={() => setShowLoginModal(true)} className="flex items-center gap-2 bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg font-medium transition-colors">
-                  <Lock size={20} /> Mode Admin
+            {isAdmin && (
+              <div className="flex gap-2">
+                <button onClick={handleAdd} className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors">
+                  <Plus size={20} /> Ajouter
                 </button>
-              )}
-            </div>
+                <button onClick={handleLogout} className="flex items-center gap-2 bg-red-100 hover:bg-red-200 text-red-700 px-4 py-2 rounded-lg font-medium transition-colors">
+                  <LogOut size={20} /> Déconnexion
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -459,14 +575,33 @@ export default function KanbanPresidentielle() {
         </div>
       </div>
 
-      {/* Info bar */}
-      <div className="max-w-7xl mx-auto mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-sm text-blue-800">
-          <strong>💡</strong>{' '}
-          {isAdmin
-            ? 'Mode admin actif — glissez les cartes entre colonnes, survolez pour éditer.'
-            : 'Données synchronisées en temps réel. Connectez-vous en mode admin pour modifier.'}
-        </p>
+      {/* Footer info bar */}
+      <div className="max-w-7xl mx-auto mt-6">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-center justify-between gap-4">
+          <p className="text-sm text-blue-800">
+            <strong>💡</strong>{' '}
+            {isAdmin
+              ? 'Mode admin actif — glissez les cartes entre colonnes, survolez pour éditer.'
+              : 'Données synchronisées en temps réel.'}
+          </p>
+          {isAdmin ? (
+            <button
+              onClick={handleLogout}
+              title="Déconnexion admin"
+              className="text-gray-400 hover:text-red-400 transition-colors p-1 shrink-0"
+            >
+              <LogOut size={14} />
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowLoginModal(true)}
+              title="Accès administration"
+              className="text-gray-300 hover:text-gray-400 transition-colors p-1 shrink-0"
+            >
+              <Lock size={12} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Login Modal */}
@@ -517,7 +652,22 @@ export default function KanbanPresidentielle() {
               {[
                 { label: 'Nom *', key: 'name', placeholder: 'Ex: Marine Le Pen' },
                 { label: 'Parti *', key: 'party', placeholder: 'Ex: Rassemblement National' },
-                { label: 'URL Photo', key: 'photo', placeholder: 'https://...' },
+              ].map(({ label, key, placeholder }) => (
+                <div key={key}>
+                  <label className="block text-sm font-medium mb-1">{label}</label>
+                  <input
+                    type="text"
+                    value={editingCard[key] || ''}
+                    onChange={(e) => setEditingCard({ ...editingCard, [key]: e.target.value })}
+                    className="w-full border rounded px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    placeholder={placeholder}
+                  />
+                </div>
+              ))}
+
+              <PhotoField editingCard={editingCard} setEditingCard={setEditingCard} />
+
+              {[
                 { label: 'Sondages', key: 'polls', placeholder: 'Ex: 25%' },
                 { label: 'Date de déclaration', key: 'declaredDate', placeholder: 'Ex: 15/01/2026' },
                 { label: 'Lien programme/site', key: 'programUrl', placeholder: 'https://...' },
