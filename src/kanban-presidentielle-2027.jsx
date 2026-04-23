@@ -448,6 +448,9 @@ export default function KanbanPresidentielle() {
         <div className="bg-white rounded-lg shadow-lg p-6">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
+              <p className="text-xs font-semibold tracking-widest text-indigo-400 uppercase mb-1">
+                Y'a Candidats et Candidats
+              </p>
               <h1
                 className="text-3xl font-bold text-gray-900 select-none cursor-default"
                 onClick={handleTitleClick}
