@@ -1,0 +1,318 @@
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, setDoc, getDoc } from 'firebase/firestore';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCfasUNrGBY3kqVsnqyPWSqfkY9iT147o0",
+  authDomain: "kanban-presidentielle-2027.firebaseapp.com",
+  projectId: "kanban-presidentielle-2027",
+  storageBucket: "kanban-presidentielle-2027.firebasestorage.app",
+  messagingSenderId: "869560933317",
+  appId: "1:869560933317:web:e409cccf6ec0d0f7ce09ac",
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+const newCandidates = [
+  {
+    id: '12',
+    name: 'Nathalie Arthaud',
+    party: 'Lutte Ouvrière',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: 'https://www.lutte-ouvriere.org',
+    status: 'potentiels',
+    note: 'Déclarée',
+  },
+  {
+    id: '13',
+    name: 'Clémentine Autain',
+    party: 'La France Insoumise',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Candidate à la candidature pour être candidate (?)',
+  },
+  {
+    id: '14',
+    name: 'Sandrine Rousseau',
+    party: 'Europe Écologie Les Verts',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: null,
+  },
+  {
+    id: '15',
+    name: 'Delphine Batho',
+    party: 'Génération Écologie',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Déclarée',
+  },
+  {
+    id: '16',
+    name: 'Olivier Faure',
+    party: 'Parti Socialiste',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: 'https://www.parti-socialiste.fr',
+    status: 'potentiels',
+    note: null,
+  },
+  {
+    id: '17',
+    name: 'Ségolène Royal',
+    party: 'Parti Socialiste',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Déclarée dans le cadre d\'une primaire',
+  },
+  {
+    id: '18',
+    name: 'François Hollande',
+    party: 'Parti Socialiste',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Y songe mais quasi-candidat',
+  },
+  {
+    id: '19',
+    name: 'Jérôme Guedj',
+    party: 'Parti Socialiste',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Déclaré',
+  },
+  {
+    id: '20',
+    name: 'Bernard Cazeneuve',
+    party: 'Renaissance Démocrate',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: null,
+  },
+  {
+    id: '21',
+    name: 'Élisabeth Borne',
+    party: 'Renaissance',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: null,
+  },
+  {
+    id: '22',
+    name: 'Yaël Braun-Pivet',
+    party: 'Renaissance',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: null,
+  },
+  {
+    id: '23',
+    name: 'Aurore Bergé',
+    party: 'Renaissance',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Y songe dans le cadre d\'une primaire',
+  },
+  {
+    id: '24',
+    name: 'Manuel Valls',
+    party: 'Indépendant',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: null,
+  },
+  {
+    id: '25',
+    name: 'Gérald Darmanin',
+    party: 'Les Républicains',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: null,
+  },
+  {
+    id: '26',
+    name: 'Jean Castex',
+    party: 'Renaissance',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Ambigu',
+  },
+  {
+    id: '27',
+    name: 'Dominique de Villepin',
+    party: 'Indépendant',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Quasi-candidat',
+  },
+  {
+    id: '28',
+    name: 'Xavier Bertrand',
+    party: 'Les Républicains',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Déclaré',
+  },
+  {
+    id: '29',
+    name: 'François Baroin',
+    party: 'Les Républicains',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Y songe (avant désignation Retailleau)',
+  },
+  {
+    id: '30',
+    name: 'Laurent Wauquiez',
+    party: 'Les Républicains',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: null,
+  },
+  {
+    id: '31',
+    name: 'David Lisnard',
+    party: 'Les Républicains',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Déclaré',
+  },
+  {
+    id: '32',
+    name: 'Nicolas Dupont-Aignan',
+    party: 'Debout La France',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: 'https://www.deboutlarepublique.fr',
+    status: 'potentiels',
+    note: 'Déclaré',
+  },
+  {
+    id: '33',
+    name: 'Sophia Knafo',
+    party: 'Reconquête',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: 'Potentielle candidate si pas Zemmour',
+  },
+  {
+    id: '34',
+    name: 'François Asselineau',
+    party: 'Union Populaire Républicaine',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: 'https://www.upr.fr',
+    status: 'potentiels',
+    note: 'Déclaré',
+  },
+  {
+    id: '35',
+    name: 'Michel-Édouard Leclerc',
+    party: 'Indépendant',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: null,
+  },
+  {
+    id: '36',
+    name: 'Mathieu Pigasse',
+    party: 'Indépendant',
+    photo: '',
+    polls: null,
+    declaredDate: null,
+    programUrl: null,
+    status: 'potentiels',
+    note: null,
+  },
+];
+
+async function run() {
+  let added = 0;
+  let skipped = 0;
+
+  for (const candidate of newCandidates) {
+    const ref = doc(db, 'candidates', candidate.id);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      console.log(`⏭  Skipped (already exists): ${candidate.name}`);
+      skipped++;
+    } else {
+      await setDoc(ref, candidate);
+      console.log(`✅ Added: ${candidate.name}`);
+      added++;
+    }
+  }
+
+  console.log(`\nDone — ${added} added, ${skipped} skipped.`);
+  process.exit(0);
+}
+
+run().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
